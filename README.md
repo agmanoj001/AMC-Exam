@@ -15,6 +15,8 @@ on GitHub Pages and on phones and tablets.
 | **Mini-lessons** | Two equations with two unknowns, substitution and elimination, shown with an animated balance scale. Written for a 6th grader, followed by original practice problems. |
 | **Practice drills** | 48 original problems by topic, each with a hint and a worked solution. |
 | **Progress dashboard** | Scores over time, drill accuracy by topic, error log by topic, average time per question. |
+| **Home** | A “today” panel with a countdown to the next contest, the current practice streak, and a **Start today’s practice** button that picks due retries first, then a drill on the weakest topic. |
+| **Settings** | Light / dark / match-device theme, contest dates for the countdown, answer keys, backup. |
 
 Keyboard: in a mock contest press <kbd>A</kbd>–<kbd>E</kbd> to answer, <kbd>0</kbd> to blank,
 <kbd>F</kbd> to flag, and <kbd>←</kbd> <kbd>→</kbd> to move. Lessons use <kbd>←</kbd> <kbd>→</kbd>.
@@ -31,8 +33,10 @@ This repository contains **no real AMC problems, figures or answer keys**.
 
 ## Your data
 
-Everything is saved in the browser’s `localStorage` under the key `amcPrep.v1`.
-Nothing is sent anywhere. Clearing browser data erases it, so use
+Study data is saved in the browser’s `localStorage` under the key `amcPrep.v1`. Display preferences
+(theme and contest dates) live separately under `amcPrep.ui`, so they never mix with study data.
+Nothing is sent anywhere. (The Inter font is loaded from Google Fonts; without a connection the app
+falls back to the system font.) Clearing browser data erases it, so use
 **Settings → Export backup** now and then; **Import backup** restores it (also handy for
 moving to another device). The app stores no names or other personal information.
 
@@ -87,5 +91,8 @@ js/lessons.js       Balance-scale lessons
 js/answers.js       Comparing typed answers (3/8 = 0.375)
 js/stats.js         Dashboard aggregations
 js/charts.js        Small SVG charts
+js/home.js          Streak, contest countdown, “today’s practice” pick
+js/prefs.js         Theme and contest-date preferences
+js/icons.js         Inline SVG icons
 tests/              Node test runner tests
 ```
