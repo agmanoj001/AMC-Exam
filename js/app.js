@@ -8,13 +8,19 @@ import { PROBLEMS, problemsByTopic, problemsBySet, getProblem } from './problems
 import { answersMatch } from './answers.js';
 import { LESSONS, getLesson, scaleSkeletonSVG, applyStep } from './lessons.js';
 import { scoreSeries, topicAccuracy, missedByTopic, avgMockSeconds, avgDrillSeconds } from './stats.js';
-import { esc, scoreLineChart, hBarChart, pacingChart, timelineChart } from './charts.js';
+import { esc, scoreLineChart, hBarChart, pacingChart, timelineChart, setChartWidth } from './charts.js';
+import { icon } from './icons.js';
+import { loadPrefs, savePrefs, applyTheme, THEMES } from './prefs.js';
+import { practiceStreak, nextContest, pickNextActivity } from './home.js';
 
 const main = document.getElementById('main');
 const live = document.getElementById('live');
 let state = loadState(window.localStorage);
 let timerHandle = null;
 let ui = {}; // per-view transient state (not saved)
+let prefs = loadPrefs(window.localStorage);
+applyTheme(document.documentElement, prefs.theme);
+document.querySelectorAll('[data-icon]').forEach((el) => { el.outerHTML = icon(el.dataset.icon); });
 
 function save() {
   if (!saveState(window.localStorage, state)) {
@@ -72,12 +78,16 @@ function render() {
     if (r.name === 'mock') return go('#/exam');
   }
   const view = VIEWS[r.name] ?? viewHome;
-  document.querySelectorAll('.nav a').forEach((a) => {
-    a.toggleAttribute('aria-current', a.getAttribute('href') === `#/${r.name}`);
+  const section = { exam: 'mock', results: 'mock' }[r.name] ?? (VIEWS[r.name] ? r.name : 'home');
+  document.querySelectorAll('[data-route]').forEach((a) => {
+    if (a.dataset.route === section) a.setAttribute('aria-current', 'page');
+    else a.removeAttribute('aria-current');
   });
+  document.body.classList.toggle('exam-mode', r.name === 'exam' && !!state.inProgress);
   const sameView = ui.lastRoute === location.hash;
   const refocus = sameView ? focusSelector(document.activeElement) : null;
   ui.lastRoute = location.hash;
+  ui.chartWidth = setChartWidth(chartContentWidth());
   main.innerHTML = view(r.arg);
   view.mount?.(r.arg);
   const target = refocus && main.querySelector(refocus);
@@ -85,6 +95,13 @@ function render() {
   else if (!ui.keepFocus) main.focus({ preventScroll: true });
   ui.keepFocus = false;
   if (!sameView) window.scrollTo(0, 0);
+}
+
+/** Width available inside a card on the current screen. */
+function chartContentWidth() {
+  const cs = getComputedStyle(main);
+  const inner = main.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  return inner - (window.innerWidth <= 760 ? 34 : 50);
 }
 
 /** A selector that finds "the same" control after a re-render, so keyboard focus isn't lost. */
@@ -97,10 +114,42 @@ function focusSelector(el) {
 
 // ---------------- home ----------------
 function viewHome() {
-  const due = dueEntries(state.errorLog, Date.now()).length;
-  const resume = state.inProgress
-    ? `<div class="card highlight"><h2>Your contest is still going</h2><p>${esc(state.inProgress.label)} — the clock is still running.</p><a class="btn primary" href="#/exam">Jump back in</a></div>`
-    : '';
+  const now = Date.now();
+  const due = dueEntries(state.errorLog, now).length;
+  const streak = practiceStreak(state, now);
+  const next = nextContest(prefs.contestDates, now);
+  const finished = state.attempts.filter((a) => a.result).sort((a, b) => b.finishedAt - a.finishedAt);
+  const last = finished[0];
+  const solved = new Set(state.drills.filter((d) => d.correct).map((d) => d.problemId));
+  const drillPoolAll = PROBLEMS.filter((p) => p.set === 'drill');
+  const lessonsDone = LESSONS.filter((l) => state.lessons[l.id]?.done).length;
+  const avg = avgMockSeconds(finished);
+
+  const countdown = next
+    ? `<span class="today-num">${next.days === 0 ? 'Today!' : next.days}</span>
+       <span class="today-label">${next.days === 0 ? `${esc(next.name)} is today — you’ve got this` : `day${next.days === 1 ? '' : 's'} until the ${esc(next.name)}`}</span>`
+    : `<span class="today-num">—</span><span class="today-label"><a href="#/settings">Set contest dates</a></span>`;
+  const streakText = streak.days
+    ? `<span class="today-num">${streak.days}</span><span class="today-label">day streak${streak.practicedToday ? '' : ' — practice today to keep it going'}</span>`
+    : '<span class="today-num">0</span><span class="today-label">day streak — today is a great day to start</span>';
+
+  let cta;
+  if (state.inProgress) {
+    cta = `<a class="btn primary xl" href="#/exam">${icon('play')} Jump back into your contest</a>
+      <p class="cta-reason">${esc(state.inProgress.label)} — the clock is still running.</p>`;
+  } else {
+    const nextUp = pickNextActivity(state, now);
+    cta = `<a class="btn primary xl" href="${nextUp.href}">Start today’s practice ${icon('arrow')}</a>
+      <p class="cta-reason">${esc(nextUp.reason)}.</p>`;
+  }
+
+  const card = (href, ic, title, desc, stat) => `<a class="card link tool" href="${href}">
+      <span class="tool-icon">${icon(ic)}</span>
+      <span class="tool-title">${title}</span>
+      <span class="tool-desc">${desc}</span>
+      <span class="tool-stat">${stat}</span>
+    </a>`;
+
   const tips = [
     'On the AMC 10, a blank is worth 1.5 points. Guess only when you can rule out at least two choices.',
     'On the AMC 8 there’s no penalty for guessing, so never leave a bubble empty.',
@@ -109,14 +158,21 @@ function viewHome() {
     'Drawing a picture is never a waste of time, especially in geometry.',
   ];
   return `<section class="stack">
-    <h1>Ready to practice? 🌟</h1>
-    ${resume}
+    <h1 class="page-title">Ready to practice?</h1>
+    <div class="today card">
+      <div class="today-stats">
+        <div class="today-stat"><span class="today-icon">${icon('calendar')}</span><div>${countdown}</div></div>
+        <div class="today-stat"><span class="today-icon">${icon('flame')}</span><div>${streakText}</div></div>
+      </div>
+      <div class="today-cta">${cta}</div>
+    </div>
+    <h2 class="section-title">Study tools</h2>
     <div class="grid cards">
-      <a class="card link" href="#/mock"><span class="emoji" aria-hidden="true">📝</span><h2>Mock contest</h2><p>Full-length AMC 10 or AMC 8 with a real timer.</p></a>
-      <a class="card link" href="#/errors"><span class="emoji" aria-hidden="true">🔁</span><h2>Retry queue</h2><p>${due ? `${plural(due, 'question')} ready to try again today.` : 'Nothing due today — nice!'}</p></a>
-      <a class="card link" href="#/drills"><span class="emoji" aria-hidden="true">🎯</span><h2>Practice drills</h2><p>Short problems by topic, with full solutions.</p></a>
-      <a class="card link" href="#/lessons"><span class="emoji" aria-hidden="true">⚖️</span><h2>Mini-lessons</h2><p>Two equations, two unknowns — with a balance scale.</p></a>
-      <a class="card link" href="#/progress"><span class="emoji" aria-hidden="true">📈</span><h2>Progress</h2><p>See how far you’ve come.</p></a>
+      ${card('#/mock', 'mock', 'Mock contest', 'Full AMC 10 or AMC 8 with a real timer.', last ? `Last mock: ${last.result.score} / ${last.result.max}` : 'No mocks yet')}
+      ${card('#/errors', 'errors', 'Retry queue', 'Missed questions come back to try again.', due ? `${plural(due, 'item')} due for retry` : 'All caught up')}
+      ${card('#/drills', 'drills', 'Practice drills', 'Short problems by topic, with solutions.', `${solved.size} of ${drillPoolAll.length} solved`)}
+      ${card('#/lessons', 'lessons', 'Mini-lessons', 'Two equations, two unknowns on a balance scale.', `${lessonsDone} of ${LESSONS.length} finished`)}
+      ${card('#/progress', 'progress', 'Progress', 'Scores, accuracy and pacing over time.', avg === null ? 'Take a mock to see pacing' : `Avg ${formatClock(avg)} per question`)}
     </div>
     <p class="tip"><strong>Tip:</strong> ${esc(pick(tips))}</p>
   </section>`;
@@ -178,11 +234,12 @@ function viewExam() {
   const q = ip.current;
   const ans = ip.answers[q];
   const answered = ip.answers.filter((a) => a !== null).length;
-  const bubbles = CHOICES.map((ch) => `<button class="bubble" data-action="answer" data-choice="${ch}" aria-pressed="${ans === ch}" aria-label="Answer ${ch}">${ch}</button>`).join('');
+  const bubbles = CHOICES.map((ch) => `<button class="choice" data-action="answer" data-choice="${ch}" aria-pressed="${ans === ch}" aria-label="Answer ${ch}">${ch}</button>`).join('');
   const nav = ip.answers.map((a, i) => {
-    const cls = ['navq', a ? 'filled' : '', ip.flags[i] ? 'flagged' : '', i === q ? 'current' : ''].join(' ');
+    const st = ip.flags[i] ? 'flagged' : a ? 'answered' : 'blank';
     const lbl = `Question ${i + 1}${a ? `, answered ${a}` : ', blank'}${ip.flags[i] ? ', flagged' : ''}`;
-    return `<button class="${cls}" data-action="goto" data-q="${i}" aria-label="${lbl}">${i + 1}<span>${a ?? ''}${ip.flags[i] ? '⚑' : ''}</span></button>`;
+    return `<button class="pill ${st}" data-action="goto" data-q="${i}" aria-label="${lbl}"${i === q ? ' aria-current="step"' : ''}>
+      <span class="pill-num">${i + 1}</span>${ip.flags[i] ? icon('flag', { size: 14 }) : ''}${a ? `<span class="pill-ans">${a}</span>` : ''}</button>`;
   }).join('');
   const link = ip.link ? `<a class="btn ghost" href="${esc(ip.link)}" target="_blank" rel="noopener noreferrer">Open problems ↗</a>` : '';
   const confirm = ip.confirming ? `<div class="card highlight" role="dialog" aria-labelledby="cf-h">
@@ -193,21 +250,21 @@ function viewExam() {
     </div>` : '';
   return `<section class="exam">
     <div class="exam-bar">
-      <span class="exam-title">${esc(c.name)} · ${esc(ip.label)}</span>
-      <span class="timer" id="timer" role="timer" aria-live="off">--:--</span>
+      <span class="exam-title">${esc(c.name)}<span class="exam-sub">${esc(ip.label)}</span></span>
+      <span class="timer" id="timer" role="timer" aria-live="off">${icon('clock', { size: 20 })}<span id="timer-text">--:--</span></span>
       <button class="btn" data-action="ask-finish">Finish</button>
     </div>
     ${confirm}
     <div class="qcard">
       <div class="qhead">
-        <h1>Question ${q + 1}</h1>
+        <h1>Question ${q + 1} <span class="of">of ${c.questions}</span></h1>
         <span class="qtime" id="qtime" aria-label="Time on this question"></span>
       </div>
       <p class="muted">Read question ${q + 1} in your other tab, then choose below.</p>
-      <div class="bubbles" role="group" aria-label="Answer choices">${bubbles}</div>
+      <div class="choices" role="group" aria-label="Answer choices">${bubbles}</div>
       <div class="row">
         <button class="btn" data-action="answer" data-choice="" aria-pressed="${ans === null}">Leave blank</button>
-        <button class="btn" data-action="flag" aria-pressed="${ip.flags[q]}">${ip.flags[q] ? '⚑ Flagged' : '⚐ Flag for review'}</button>
+        <button class="btn flag-btn" data-action="flag" aria-pressed="${ip.flags[q]}">${icon('flag', { size: 18 })} ${ip.flags[q] ? 'Flagged' : 'Flag for review'}</button>
         ${link}
       </div>
       <div class="row spread">
@@ -216,8 +273,13 @@ function viewExam() {
       </div>
     </div>
     <h2 class="sr-only">All questions</h2>
-    <div class="navgrid">${nav}</div>
-    <p class="muted small">Keyboard: A–E choose · 0 blank · F flag · ← → move</p>
+    <div class="pills">${nav}</div>
+    <ul class="pill-legend" aria-label="Legend">
+      <li><span class="pill answered sample" aria-hidden="true">B</span> Answered</li>
+      <li><span class="pill flagged sample" aria-hidden="true">${icon('flag', { size: 14 })}</span> Flagged</li>
+      <li><span class="pill blank sample" aria-hidden="true"></span> Blank</li>
+    </ul>
+    <p class="muted small kbd-hint">Keyboard: <kbd>A</kbd>–<kbd>E</kbd> choose · <kbd>0</kbd> blank · <kbd>F</kbd> flag · <kbd>←</kbd> <kbd>→</kbd> move</p>
   </section>`;
 }
 
@@ -230,13 +292,15 @@ viewExam.mount = () => {
     const left = ip.durationSec - t;
     const el = document.getElementById('timer');
     if (el) {
-      el.textContent = formatClock(left);
-      el.classList.toggle('low', left <= 300);
+      document.getElementById('timer-text').textContent = formatClock(left);
+      // Amber at 10 minutes left, red at 5.
+      el.classList.toggle('warn', left <= 600 && left > 300);
+      el.classList.toggle('danger', left <= 300);
     }
     const qt = document.getElementById('qtime');
     if (qt) {
       const spent = timePerQuestion(ip.visits, ip.answers.length, t)[ip.current];
-      qt.textContent = `⏱ ${formatClock(spent)}`;
+      qt.textContent = `This question ${formatClock(spent)}`;
       qt.classList.toggle('slow', spent > SLOW_SECONDS);
     }
     if (left <= 0) finishExam(true);
@@ -388,18 +452,18 @@ function nextProblem(pool) {
 function viewDrills(arg) {
   if (!arg) {
     const solved = new Set(state.drills.filter((d) => d.correct).map((d) => d.problemId));
-    const card = (id, name, pool, emoji) => {
+    const card = (id, name, pool, ic) => {
       const done = pool.filter((p) => solved.has(p.id)).length;
-      return `<a class="card link" href="#/drills/${id}"><span class="emoji" aria-hidden="true">${emoji}</span><h2>${esc(name)}</h2>
-        <p>${done} of ${pool.length} solved</p><div class="meter" aria-hidden="true"><span style="width:${(100 * done) / pool.length}%"></span></div></a>`;
+      return `<a class="card link tool" href="#/drills/${id}"><span class="tool-icon">${icon(ic)}</span><span class="tool-title">${esc(name)}</span>
+        <span class="tool-stat">${done} of ${pool.length} solved</span><span class="meter" aria-hidden="true"><span style="width:${(100 * done) / pool.length}%"></span></span></a>`;
     };
-    const emojis = { algebra: '🧮', counting: '🎲', number: '🔢', geometry: '📐' };
+    const topicIcons = { algebra: 'algebra', counting: 'counting', number: 'number', geometry: 'geometry' };
     return `<section class="stack"><h1>Practice drills</h1>
       <p>Pick a topic. Every problem has a hint and a full worked solution.</p>
       <div class="grid cards">
-        ${TOPICS.map((t) => card(t.id, t.name, problemsByTopic(t.id), emojis[t.id])).join('')}
-        ${card('mixed', 'Mixed bag', PROBLEMS.filter((p) => p.set === 'drill'), '🌈')}
-        ${card('systems', 'Two equations, two unknowns', problemsBySet('systems'), '⚖️')}
+        ${TOPICS.map((t) => card(t.id, t.name, problemsByTopic(t.id), topicIcons[t.id])).join('')}
+        ${card('mixed', 'Mixed bag', PROBLEMS.filter((p) => p.set === 'drill'), 'mixed')}
+        ${card('systems', 'Two equations, two unknowns', problemsBySet('systems'), 'lessons')}
       </div></section>`;
   }
   const pool = drillPool(arg);
@@ -475,9 +539,11 @@ function viewLessons(id) {
     return `<section class="stack"><h1>Mini-lessons</h1>
       <p>Two equations, two unknowns — sounds scary, but it’s just a balance scale! Start with lesson 1.</p>
       <div class="grid cards">
-        ${LESSONS.map((l, i) => `<a class="card link" href="#/lessons/${l.id}"><span class="emoji" aria-hidden="true">⚖️</span>
-          <h2>Lesson ${i + 1}</h2><p>${esc(l.title)}</p>${state.lessons[l.id]?.done ? '<p class="good">✓ Finished</p>' : ''}</a>`).join('')}
-        <a class="card link" href="#/drills/systems"><span class="emoji" aria-hidden="true">✏️</span><h2>Practice</h2><p>${problemsBySet('systems').length} original problems with worked solutions.</p></a>
+        ${LESSONS.map((l, i) => `<a class="card link tool" href="#/lessons/${l.id}"><span class="tool-icon">${icon('lessons')}</span>
+          <span class="tool-title">Lesson ${i + 1}</span><span class="tool-desc">${esc(l.title)}</span>
+          <span class="tool-stat">${state.lessons[l.id]?.done ? `${icon('check', { size: 16 })} Finished` : 'Not started'}</span></a>`).join('')}
+        <a class="card link tool" href="#/drills/systems"><span class="tool-icon">${icon('drills')}</span><span class="tool-title">Practice</span>
+          <span class="tool-desc">Original problems with worked solutions.</span><span class="tool-stat">${problemsBySet('systems').length} problems</span></a>
       </div></section>`;
   }
   const l = getLesson(id);
@@ -599,7 +665,7 @@ function viewProgress() {
   const maxMissed = Math.max(1, ...missed.map((m) => m.count));
   const recent = [...finished].sort((a, b) => b.finishedAt - a.finishedAt).slice(0, 10);
   return `<section class="stack">
-    <h1>Your progress 📈</h1>
+    <h1>Your progress</h1>
     <div class="grid tiles">
       <div class="tile"><span class="tile-num">${finished.length}</span><span class="tile-label">mock contests</span></div>
       <div class="tile"><span class="tile-num">${state.drills.filter((d) => d.correct).length}</span><span class="tile-label">drills solved first try</span></div>
@@ -625,12 +691,28 @@ function viewSettings() {
     <td><button class="btn ghost small" data-action="reveal-key" data-id="${esc(k.id)}">${ui.revealKey === k.id ? 'Hide' : 'Show'}</button>
     <button class="btn ghost small" data-action="del-key" data-id="${esc(k.id)}" aria-label="Delete key ${esc(k.label)}">Delete</button></td></tr>`).join('');
   return `<section class="stack narrow">
-    <h1>Settings (for parents)</h1>
+    <h1>Settings</h1>
+    <div class="card">
+      <h2>Appearance</h2>
+      <div class="segmented" role="radiogroup" aria-label="Theme">
+        ${THEMES.map((t) => `<button type="button" class="seg-btn" role="radio" aria-checked="${prefs.theme === t}" data-action="set-theme" data-id="${t}">${{ system: 'Match device', light: 'Light', dark: 'Dark' }[t]}</button>`).join('')}
+      </div>
+    </div>
+    <div class="card">
+      <h2>Contest dates</h2>
+      <p class="muted small">Used for the countdown on the home screen.</p>
+      <form data-form="dates" class="date-grid">
+        <div><label for="d-AMC10">AMC 10</label><input id="d-AMC10" name="AMC10" type="date" value="${esc(prefs.contestDates.AMC10)}"></div>
+        <div><label for="d-AMC8">AMC 8</label><input id="d-AMC8" name="AMC8" type="date" value="${esc(prefs.contestDates.AMC8)}"></div>
+        <button class="btn primary">Save dates</button>
+      </form>
+    </div>
+    <h2 class="section-title">For parents</h2>
     <div class="card">
       <h2>Answer keys</h2>
       <p class="muted small">Keys are stored only in this browser. They are never part of the app’s code or sent anywhere.</p>
       ${state.keys.length ? `<div class="table-wrap"><table><thead><tr><th>Name</th><th>Contest</th><th>Key</th><th></th></tr></thead><tbody>${keys}</tbody></table></div>` : ''}
-      <form data-form="key" class="stack" autocomplete="off">
+      <form data-form="key" class="form" autocomplete="off">
         <label for="k-label">Name (e.g. “Practice set 1”)</label>
         <input id="k-label" name="label" required maxlength="60">
         <label for="k-contest">Contest</label>
@@ -735,6 +817,12 @@ const ACTIONS = {
     save();
     render();
   },
+  'set-theme': (el) => {
+    prefs.theme = el.dataset.id;
+    savePrefs(window.localStorage, prefs);
+    applyTheme(document.documentElement, prefs.theme);
+    render();
+  },
   export: doExport,
   reset: () => {
     if (!confirm('Really erase everything? Consider exporting a backup first.')) return;
@@ -763,6 +851,13 @@ main.addEventListener('submit', (ev) => {
   ev.preventDefault();
   if (form.dataset.form === 'drill') checkDrill(new FormData(form).get('ans'));
   else if (form.dataset.form === 'key') saveKey(form);
+  else if (form.dataset.form === 'dates') {
+    const fd = new FormData(form);
+    prefs.contestDates = { AMC8: String(fd.get('AMC8') ?? ''), AMC10: String(fd.get('AMC10') ?? '') };
+    savePrefs(window.localStorage, prefs);
+    prefs = loadPrefs(window.localStorage);
+    toast('Contest dates saved.');
+  }
   else if (form.dataset.form === 'log') {
     const fd = new FormData(form);
     const a = state.attempts.find((x) => x.id === form.dataset.attempt);
@@ -819,6 +914,15 @@ main.addEventListener('focusout', hideTip);
 main.addEventListener('mouseleave', hideTip);
 
 window.addEventListener('hashchange', render);
+// Redraw charts when the width changes enough to matter (e.g. rotating a tablet).
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    const r = route().name;
+    if (['progress', 'results'].includes(r) && Math.abs(setChartWidth(chartContentWidth()) - ui.chartWidth) > 24) render();
+  }, 200);
+});
 // Keep the in-progress contest in sync if another tab changed storage.
 window.addEventListener('storage', () => { state = loadState(window.localStorage); render(); });
 render();

@@ -2,31 +2,58 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="Practice for the AMC 8 and AMC 10: mock contests, pacing, error log and drills.">
-  <meta name="theme-color" content="#2a78d6">
+  <meta name="theme-color" content="#f7f8fa" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0b1215" media="(prefers-color-scheme: dark)">
   <title>AMC Practice</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%AD%90%3C/text%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f766e'/%3E%3Cpath d='M9 22 16 9l7 13M11.5 17.5h9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="css/styles.css">
+  <script>
+    // Apply the saved theme before first paint to avoid a flash.
+    try {
+      var t = JSON.parse(localStorage.getItem('amcPrep.ui') || 'null');
+      if (t && (t.theme === 'light' || t.theme === 'dark')) document.documentElement.setAttribute('data-theme', t.theme);
+    } catch (e) {}
+  </script>
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
   <header class="top">
-    <a class="brand" href="#/home"><span aria-hidden="true">⭐</span> AMC Practice</a>
-    <nav class="nav" aria-label="Main">
-      <a href="#/mock">Mock contest</a>
-      <a href="#/drills">Drills</a>
-      <a href="#/lessons">Lessons</a>
-      <a href="#/errors">Error log</a>
-      <a href="#/progress">Progress</a>
-      <a href="#/settings">Settings</a>
-    </nav>
+    <div class="top-inner">
+      <a class="brand" href="#/home" data-route="home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20 12 5l7 15M8 14h8"/></svg>
+        </span>
+        AMC Practice
+      </a>
+      <nav class="topnav" aria-label="Main">
+        <a href="#/mock" data-route="mock">Mock contest</a>
+        <a href="#/drills" data-route="drills">Drills</a>
+        <a href="#/lessons" data-route="lessons">Lessons</a>
+        <a href="#/errors" data-route="errors">Error log</a>
+        <a href="#/progress" data-route="progress">Progress</a>
+      </nav>
+      <a class="icon-btn" href="#/settings" data-route="settings" aria-label="Settings" title="Settings">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>
+      </a>
+    </div>
   </header>
   <main id="main" tabindex="-1"></main>
-  <div id="toast" class="toast" hidden></div>
+  <nav class="tabbar" aria-label="Main">
+    <a href="#/home" data-route="home"><span data-icon="home"></span>Home</a>
+    <a href="#/mock" data-route="mock"><span data-icon="mock"></span>Mock</a>
+    <a href="#/drills" data-route="drills"><span data-icon="drills"></span>Drills</a>
+    <a href="#/errors" data-route="errors"><span data-icon="errors"></span>Errors</a>
+    <a href="#/progress" data-route="progress"><span data-icon="progress"></span>Progress</a>
+  </nav>
+  <div id="toast" class="toast" role="status" hidden></div>
   <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
   <div id="live" class="sr-only" aria-live="polite"></div>
-  <noscript><p class="stack">This app needs JavaScript turned on.</p></noscript>
+  <noscript><p class="noscript">This app needs JavaScript turned on.</p></noscript>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>
