@@ -1,0 +1,11 @@
+{
+  "name": "amc-prep",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Static AMC 8 / AMC 10 practice app (no build step).",
+  "type": "module",
+  "scripts": {
+    "test": "node --test \"tests/**/*.test.js\"",
+    "start": "python3 -m http.server 8000"
+  }
+}
