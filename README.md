@@ -31,6 +31,19 @@ This repository contains **no real AMC problems, figures or answer keys**.
   **Settings** screen. It is stored **only in that browser’s localStorage**, never in the code.
 - All drill and lesson problems were written for this app.
 
+### Adding past contests quickly
+
+In **Settings → Answer keys → Add from the AoPS wiki**, pick a year and contest (AMC 8, AMC 10A/10B,
+the 2021 Fall AMC 10A/10B, or the 2000–2001 AMC 10). The app links to that contest’s answer-key page on
+the AoPS wiki. Select all on that page, copy, and paste it into the box; the app finds the 25 answers,
+names the key (e.g. “2024 AMC 8”) and saves a link to the problems page, which the student gets as
+**Open problems ↗** during the mock contest. After saving, the year steps back by one so a run of
+past contests can be added in a row.
+
+To move keys to another device without touching progress, use **Backup → Export answer keys** and
+**Import answer keys** (it adds new keys and skips ones already saved). Keep that file out of this
+repository.
+
 ## Your data
 
 Study data is saved in the browser’s `localStorage` under the key `amcPrep.v1`. Display preferences
@@ -94,5 +107,6 @@ js/charts.js        Small SVG charts
 js/home.js          Streak, contest countdown, “today’s practice” pick
 js/prefs.js         Theme and contest-date preferences
 js/icons.js         Inline SVG icons
+js/keys.js          AoPS links, reading pasted answer keys, key import/export
 tests/              Node test runner tests
 ```
