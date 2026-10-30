@@ -12,6 +12,7 @@ import { esc, scoreLineChart, hBarChart, pacingChart, timelineChart, setChartWid
 import { icon } from './icons.js';
 import { loadPrefs, savePrefs, applyTheme, THEMES } from './prefs.js';
 import { practiceStreak, nextContest, pickNextActivity } from './home.js';
+import { EDITIONS, contestInfo, extractAnswerKey, mergeKeys, exportKeysJSON, parseKeysFile } from './keys.js';
 
 const main = document.getElementById('main');
 const live = document.getElementById('live');
@@ -687,7 +688,7 @@ function viewProgress() {
 // ---------------- settings ----------------
 function viewSettings() {
   const keys = state.keys.map((k) => `<tr><td>${esc(k.label)}</td><td>${esc(getContest(k.contest).name)}</td>
-    <td><code>${ui.revealKey === k.id ? esc(k.key) : '•'.repeat(25)}</code></td>
+    <td>${ui.revealKey === k.id ? `<code>${esc(k.key)}</code>` : '<span class="key-mask" aria-label="hidden">•••••</span>'}</td>
     <td><button class="btn ghost small" data-action="reveal-key" data-id="${esc(k.id)}">${ui.revealKey === k.id ? 'Hide' : 'Show'}</button>
     <button class="btn ghost small" data-action="del-key" data-id="${esc(k.id)}" aria-label="Delete key ${esc(k.label)}">Delete</button></td></tr>`).join('');
   return `<section class="stack narrow">
@@ -712,6 +713,9 @@ function viewSettings() {
       <h2>Answer keys</h2>
       <p class="muted small">Keys are stored only in this browser. They are never part of the app’s code or sent anywhere.</p>
       ${state.keys.length ? `<div class="table-wrap"><table><thead><tr><th>Name</th><th>Contest</th><th>Key</th><th></th></tr></thead><tbody>${keys}</tbody></table></div>` : ''}
+      ${aopsKeyForm()}
+      <details class="hand-entry"${ui.handEntryOpen ? ' open' : ''}>
+      <summary>Add a key by hand</summary>
       <form data-form="key" class="form" autocomplete="off">
         <label for="k-label">Name (e.g. “Practice set 1”)</label>
         <input id="k-label" name="label" required maxlength="60">
@@ -724,6 +728,7 @@ function viewSettings() {
         <p class="feedback" id="key-msg" role="status"></p>
         <button class="btn primary">Save key</button>
       </form>
+      </details>
     </div>
     <div class="card">
       <h2>Backup</h2>
@@ -733,6 +738,13 @@ function viewSettings() {
         <label class="btn" for="import-file">Import backup…</label>
         <input id="import-file" type="file" accept="application/json,.json" class="sr-only" data-action="import">
       </div>
+      <h3>Answer keys only</h3>
+      <p class="muted small">Move keys to another device without touching progress. Importing adds new keys and skips ones already saved.</p>
+      <div class="row">
+        <button class="btn" data-action="export-keys" ${state.keys.length ? '' : 'disabled'}>Export answer keys</button>
+        <label class="btn" for="import-keys-file">Import answer keys…</label>
+        <input id="import-keys-file" type="file" accept="application/json,.json" class="sr-only" data-action="import-keys">
+      </div>
     </div>
     <div class="card">
       <h2>Start fresh</h2>
@@ -740,6 +752,92 @@ function viewSettings() {
       <button class="btn danger" data-action="reset">Erase everything…</button>
     </div>
   </section>`;
+}
+
+// "Add from the AoPS wiki": pick a contest, open its answer-key page, paste it here.
+function aopsKeyForm() {
+  const year = ui.aopsYear ?? new Date().getFullYear();
+  const edition = ui.aopsEdition ?? 'AMC8';
+  const info = contestInfo(year, edition);
+  return `<form data-form="aops-key" class="aops-form" autocomplete="off">
+      <h3>Add from the AoPS wiki</h3>
+      <div class="aops-pick">
+        <div><label for="a-year">Year</label><input id="a-year" name="year" type="number" inputmode="numeric" min="1999" max="${new Date().getFullYear()}" value="${esc(year)}" required></div>
+        <div><label for="a-ed">Contest</label><select id="a-ed" name="edition">${EDITIONS.map((e) => `<option value="${e.id}"${e.id === edition ? ' selected' : ''}>${esc(e.label)}</option>`).join('')}</select></div>
+      </div>
+      <div class="aops-steps" id="aops-steps">${aopsSteps(info)}</div>
+      <label for="a-paste">Paste the answer-key page (or just the answers)</label>
+      <textarea id="a-paste" name="paste" rows="4" spellcheck="false" placeholder="Select all on the answer-key page, copy, and paste here"></textarea>
+      <p class="feedback" id="aops-msg" role="status"></p>
+      <button class="btn primary">Save key</button>
+    </form>`;
+}
+
+function aopsSteps(info) {
+  if (!info.ok) return `<p class="feedback">${esc(info.error)}</p>`;
+  return `<ol>
+      <li>Open <a href="${esc(info.keyUrl)}" target="_blank" rel="noopener noreferrer">the ${esc(info.label)} answer key ↗</a></li>
+      <li>Select all (<kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>A</kbd>), copy, and paste below.</li>
+    </ol>
+    <p class="muted small">Saves as “${esc(info.label)}” with a link to <a href="${esc(info.problemsUrl)}" target="_blank" rel="noopener noreferrer">its problems ↗</a>.</p>`;
+}
+
+function refreshAopsSteps() {
+  const y = document.getElementById('a-year');
+  const e = document.getElementById('a-ed');
+  if (!y || !e) return;
+  ui.aopsYear = y.value;
+  ui.aopsEdition = e.value;
+  document.getElementById('aops-steps').innerHTML = aopsSteps(contestInfo(y.value, e.value));
+}
+
+function saveAopsKey(form) {
+  const fd = new FormData(form);
+  const msg = document.getElementById('aops-msg');
+  const fail = (text) => { msg.textContent = text; msg.className = 'feedback'; };
+  const info = contestInfo(fd.get('year'), fd.get('edition'));
+  if (!info.ok) return fail(info.error);
+  if (state.keys.some((k) => k.label.trim().toLowerCase() === info.label.toLowerCase())) {
+    return fail(`${info.label} is already saved.`);
+  }
+  const parsed = extractAnswerKey(fd.get('paste'));
+  if (!parsed.ok) return fail(parsed.error);
+  state.keys.push({ id: makeId('key'), label: info.label, contest: info.contest, key: parsed.key, link: info.problemsUrl });
+  save();
+  // Step back a year so adding a run of past contests is quick.
+  ui.aopsYear = Number(fd.get('year')) - 1;
+  ui.aopsEdition = fd.get('edition');
+  toast(`Saved ${info.label}. Next up: ${ui.aopsYear}.`);
+  render();
+  document.getElementById('a-paste')?.focus();
+}
+
+function doExportKeys() {
+  const blob = new Blob([exportKeysJSON(state.keys)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `amc-answer-keys-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function doImportKeys(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  const res = parseKeysFile(await file.text());
+  input.value = '';
+  if (!res.ok) return toast(res.error);
+  const merged = mergeKeys(state.keys, res.keys, () => makeId('key'));
+  state.keys = merged.keys;
+  save();
+  const parts = [`Added ${plural(merged.added, 'key')}`];
+  if (merged.skipped) parts.push(`${merged.skipped} already saved`);
+  if (res.invalid) parts.push(`${res.invalid} unreadable`);
+  toast(`${parts.join(' · ')}.`);
+  render();
 }
 
 function saveKey(form) {
@@ -824,6 +922,7 @@ const ACTIONS = {
     render();
   },
   export: doExport,
+  'export-keys': doExportKeys,
   reset: () => {
     if (!confirm('Really erase everything? Consider exporting a backup first.')) return;
     state = defaultState();
@@ -844,13 +943,22 @@ main.addEventListener('click', (ev) => {
 
 main.addEventListener('change', (ev) => {
   if (ev.target.dataset.action === 'import') doImport(ev.target);
+  else if (ev.target.dataset.action === 'import-keys') doImportKeys(ev.target);
+  else if (ev.target.id === 'a-ed' || ev.target.id === 'a-year') refreshAopsSteps();
 });
+main.addEventListener('input', (ev) => {
+  if (ev.target.id === 'a-year') refreshAopsSteps();
+});
+main.addEventListener('toggle', (ev) => {
+  if (ev.target.classList?.contains('hand-entry')) ui.handEntryOpen = ev.target.open;
+}, true);
 
 main.addEventListener('submit', (ev) => {
   const form = ev.target;
   ev.preventDefault();
   if (form.dataset.form === 'drill') checkDrill(new FormData(form).get('ans'));
   else if (form.dataset.form === 'key') saveKey(form);
+  else if (form.dataset.form === 'aops-key') saveAopsKey(form);
   else if (form.dataset.form === 'dates') {
     const fd = new FormData(form);
     prefs.contestDates = { AMC8: String(fd.get('AMC8') ?? ''), AMC10: String(fd.get('AMC10') ?? '') };

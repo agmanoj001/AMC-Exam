@@ -399,6 +399,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { border-color
 .rules { font-weight: 500; color: var(--text-2); font-size: var(--fs-base); }
 .date-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: var(--s-2); align-items: end; }
 .date-grid label { margin-top: 0; }
+.date-grid > *, .aops-pick > * { min-width: 0; }
+input[type="date"] { min-width: 0; max-width: 100%; }
+.key-mask { letter-spacing: 0.15em; white-space: nowrap; }
 
 /* =========================================================
    Mock contest
@@ -641,4 +644,23 @@ svg.scale.tipping .tilt-note { fill: var(--amber); }
   .chart .bar.slow, .chart .seg.slow { fill: Highlight; }
   .pill[aria-current], .choice[aria-pressed="true"] { outline: 3px solid Highlight; }
   :focus-visible { outline: 3px solid Highlight; }
+}
+
+/* =========================================================
+   Answer-key tools (Settings)
+   ========================================================= */
+.aops-form { margin-top: var(--s-2); }
+.aops-form h3 { margin-top: 0; }
+.aops-pick { display: grid; grid-template-columns: 1fr 2fr; gap: var(--s-2); }
+.aops-pick label { margin-top: 0; }
+.aops-steps { margin-top: var(--s-2); font-size: var(--fs-base); }
+.aops-steps ol { margin: 0 0 var(--s-1); }
+.aops-form .btn { margin-top: var(--s-2); }
+.hand-entry { margin-top: var(--s-3); border-top: 1px solid var(--border); padding-top: var(--s-2); }
+.hand-entry > summary {
+  min-height: var(--touch); display: inline-flex; align-items: center;
+  color: var(--accent-text); font-weight: 500; font-size: var(--fs-base); border-radius: var(--r-sm);
+}
+@media (max-width: 760px) {
+  .aops-pick { grid-template-columns: 1fr; }
 }
